@@ -143,6 +143,38 @@ export const voetbalDag = (day: DayEntry | undefined): boolean =>
 export const naVoetbalDag = (days: DayEntry[], date: ISODate): boolean =>
   voetbalDag(days.find((d) => d.date === shiftISO(date, -1)))
 
+/**
+ * Aaneengesloten vakantieblokken, oudste eerst. Een vakantie is geen losse dag
+ * maar een periode: pas als je weet waar hij begon en eindigde kun je zeggen
+ * wat de weegschaal erna eigenlijk laat zien.
+ *
+ * Losse dagen ertussen die niet zijn aangevinkt breken het blok niet, zolang
+ * het gat klein is — je vergeet op vakantie nu eenmaal een vinkje, en daar mag
+ * een reis niet in tweeën door vallen.
+ */
+export function vakantieBlokken(days: DayEntry[]): { van: ISODate; tot: ISODate; dagen: number }[] {
+  const vakantie = days.filter((d) => d.context.holiday === true).map((d) => d.date).sort()
+  const blokken: { van: ISODate; tot: ISODate; dagen: number }[] = []
+  for (const datum of vakantie) {
+    const laatste = blokken[blokken.length - 1]
+    const gat =
+      laatste == null
+        ? Infinity
+        : (new Date(datum + 'T12:00:00').getTime() -
+            new Date(laatste.tot + 'T12:00:00').getTime()) /
+          86_400_000
+    if (gat <= 2) laatste.tot = datum
+    else blokken.push({ van: datum, tot: datum, dagen: 0 })
+  }
+  return blokken.map((b) => ({
+    ...b,
+    dagen:
+      (new Date(b.tot + 'T12:00:00').getTime() - new Date(b.van + 'T12:00:00').getTime()) /
+        86_400_000 +
+      1,
+  }))
+}
+
 /** Alleen nuchtere ochtendwegingen tellen mee — avondwegingen vervuilen de trend. */
 export const weighIns = (days: DayEntry[]) =>
   days.filter((d) => d.body.weightKg != null && d.body.fasted !== false)

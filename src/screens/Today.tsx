@@ -369,6 +369,11 @@ export default function Today({ day, days, profile, onSave, onFoodsChanged, onDe
             onChange={(v) => patch({ context: { ...day.context, ill: v } })}
           />
           <Toggle
+            label="Vakantie"
+            on={!!day.context.holiday}
+            onChange={(v) => patch({ context: { ...day.context, holiday: v } })}
+          />
+          <Toggle
             label="Reisdag"
             on={!!day.context.travel}
             onChange={(v) => patch({ context: { ...day.context, travel: v } })}

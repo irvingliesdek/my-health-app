@@ -9,6 +9,7 @@ import {
   intakeKcal,
   intakeProtein,
   sleepHours,
+  vakantieBlokken,
   weighIns,
   weightTrend,
   workoutMinutes,
@@ -174,7 +175,61 @@ function weightInsights(days: DayEntry[], profile: Profile): Insight[] {
     }
   }
 
+  const vakantie = vakantieInzicht(days)
+  if (vakantie) out.unshift(vakantie)
+
   return out
+}
+
+/**
+ * De eerste wegingen na een vakantie. Hier gaat het bijna altijd mis in je
+ * hoofd: je stapt terug op de weegschaal, ziet twee kilo, en trekt een conclusie
+ * over tien dagen die je niet verdient.
+ *
+ * Wat er werkelijk staat is grotendeels glycogeen en het water dat eraan
+ * vastzit, plus zout uit restaurantkost. Dat loopt in dagen weer weg. Daarom
+ * rekent dit inzicht de bovengrens uit van wat er echt vet kán zijn — bij een
+ * fors overschot van 1000 kcal per dag is dat ruwweg een ons per vier dagen —
+ * en zet dat naast wat de weegschaal aanwijst.
+ *
+ * Verschijnt alleen in het venster waarin het nodig is: de eerste week na
+ * thuiskomst. Daarna is het vocht weg en spreekt je trend weer voor zichzelf.
+ */
+function vakantieInzicht(days: DayEntry[]): Insight | null {
+  const blok = vakantieBlokken(days).slice(-1)[0]
+  if (!blok) return null
+
+  const wegingen = weighIns(days)
+  const laatste = wegingen[wegingen.length - 1]
+  if (!laatste || laatste.date <= blok.tot) return null
+
+  const dagenTerug =
+    (new Date(laatste.date + 'T12:00:00').getTime() - new Date(blok.tot + 'T12:00:00').getTime()) /
+    86_400_000
+  if (dagenTerug > 8) return null
+
+  const ervoor = wegingen.filter((d) => d.date < blok.van).slice(-5)
+  if (ervoor.length < 2) return null
+  const basis = mean(ervoor.map((d) => d.body.weightKg!))
+  const verschil = laatste.body.weightKg! - basis
+  const maxVet = (blok.dagen * 1000) / KCAL_PER_KG
+  const weg = s(Math.round(blok.dagen), 'dag', 'dagen')
+
+  if (verschil <= 0.2) {
+    return {
+      tag: 'positive',
+      tagText: 'Na de vakantie',
+      title: `${nf(verschil, 1)} kg ten opzichte van voor je vertrek`,
+      body: `Gemeten tegen je gemiddelde van de ${s(ervoor.length, 'weging', 'wegingen')} voor ${blok.van}. Na ${weg} weg is dat een prima uitkomst — en je eerste weging thuis ligt meestal nog aan de hoge kant door zout en glycogeen, dus dit wordt eerder beter dan slechter.`,
+    }
+  }
+
+  return {
+    tag: 'neutral',
+    tagText: 'Na de vakantie',
+    title: `+${nf(verschil, 1)} kg ten opzichte van voor je vertrek`,
+    body: `Lees dit nog niet als vet. In ${weg} kan er bij een fors overschot van 1000 kcal per dag hooguit ${nf(maxVet, 1)} kg vet bij zijn gekomen; de rest is glycogeen, zout en het water dat daaraan vastzit. Dat loopt er in ongeveer een week weer af zodra je weer gewoon eet en drinkt. Weeg dus door, maar trek pas een conclusie als je zeven dagen thuis bent — dan zegt je trendlijn wat er echt is blijven hangen.`,
+  }
 }
 
 /* --------------------------- energie en voeding --------------------------- */
@@ -471,7 +526,11 @@ function habitInsights(days: DayEntry[], profile: Profile): Insight[] {
 
   // Hoe compleet log je eigenlijk? Alleen over de periode dat je zelf logt --
   // een geimporteerde weeggeschiedenis meetellen zou hier altijd 0% opleveren.
-  const periode = logPeriode(afgerond)
+  // Vakantiedagen tellen niet mee: op vakantie is er vaak geen weegschaal en
+  // geen tijd om te loggen. Dat als nalatigheid opschrijven is oneerlijk, en het
+  // maakt het cijfer bovendien onbruikbaar om je gewone weken aan af te meten.
+  const periode = logPeriode(afgerond).filter((d) => d.context.holiday !== true)
+  const vakantiedagen = logPeriode(afgerond).filter((d) => d.context.holiday === true).length
   if (periode.length >= 7) {
     const complete = periode.filter(
       (d) => d.body.weightKg != null && intakeKcal(d) > 0 && burned(d) > 0,
@@ -482,7 +541,11 @@ function habitInsights(days: DayEntry[], profile: Profile): Insight[] {
         tag: 'warning',
         tagText: 'Volledigheid',
         title: `${pct}% van je dagen is volledig gelogd`,
-        body: `${complete} van ${periode.length} dagen sinds je begon met loggen hebben gewicht, voeding én verbranding. De verbanden hierboven worden pas betrouwbaar als dat richting de 80% gaat — met gaten weet je niet of een patroon echt is of een meetfout.`,
+        body:
+          `${complete} van ${periode.length} dagen sinds je begon met loggen hebben gewicht, voeding én verbranding. De verbanden hierboven worden pas betrouwbaar als dat richting de 80% gaat — met gaten weet je niet of een patroon echt is of een meetfout.` +
+          (vakantiedagen > 0
+            ? ` ${s(vakantiedagen, 'vakantiedag telt', 'vakantiedagen tellen')} hier niet in mee.`
+            : ''),
       })
     }
   }

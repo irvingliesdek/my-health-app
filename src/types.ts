@@ -66,6 +66,13 @@ export type Context = {
   ill?: boolean
   travel?: boolean
   football?: boolean
+  /**
+   * Vakantiedag. Een periode waarin bijna alles anders is: je weegt je vaak
+   * niet, je eet op andere tijden, er gaat meer alcohol doorheen en je beweegt
+   * meer. Zonder deze vlag leest de app dat later terug als 'gestopt met loggen'
+   * en als een gewichtssprong uit het niets.
+   */
+  holiday?: boolean
   stress?: 1 | 2 | 3 | 4 | 5
   notes?: string
 }

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DayEntry, Profile, Settings } from '../types'
-import { Card, NumberField } from '../components/inputs'
-import { allFoods, deleteFood, exportAll, importAll, putFoods } from '../lib/db'
+import { emptyDay, normalizeDay } from '../types'
+import { Card, NumberField, TextField } from '../components/inputs'
+import { allFoods, deleteFood, exportAll, getDay, importAll, putDay, putFoods } from '../lib/db'
 import { foodKey, type FoodItem } from '../lib/foods'
-import { ageAt, birthDateForAge, todayISO } from '../lib/derive'
+import { ageAt, birthDateForAge, shiftISO, todayISO } from '../lib/derive'
 import { PIN_LENGTH, biometricsAvailable, hashPin, registerBiometrics } from '../lib/lock'
 import { claudeSummary } from '../lib/share'
 import { logout, syncEnabled } from '../lib/firebase'
@@ -275,6 +276,8 @@ export default function SettingsScreen({
         </div>
       </Card>
 
+      <Vakantie onReload={onReload} />
+
       <Card title="Back-up">
         <p className="note" style={{ marginBottom: 12 }}>
           Je data staat alleen op dit toestel. Wis je je browseropslag, dan is die weg. Exporteer
@@ -385,6 +388,64 @@ function FoodsCard() {
           </div>
         ))}
       </div>
+    </Card>
+  )
+}
+
+/**
+ * Een vakantie in één keer markeren. Los aanvinken werkt niet voor waar dit voor
+ * bedoeld is: je zet de vlag juist voor dagen dat je de app niet opent, vaak nog
+ * voordat je vertrekt. Reisdagen horen er gewoon bij — ook een reisdag is geen
+ * gewone dag.
+ *
+ * Bestaande dagen worden bijgewerkt, niet overschreven: wat je die dag wel hebt
+ * gelogd blijft staan.
+ */
+function Vakantie({ onReload }: { onReload: () => Promise<void> }) {
+  const [van, setVan] = useState<string | undefined>(todayISO())
+  const [tot, setTot] = useState<string | undefined>(undefined)
+  const [bezig, setBezig] = useState(false)
+  const [melding, setMelding] = useState('')
+
+  const geldig = (d: string | undefined) => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(Date.parse(d))
+  const kan = geldig(van) && geldig(tot) && van! <= tot!
+
+  const markeer = async (aan: boolean) => {
+    if (!kan) return
+    setBezig(true)
+    let n = 0
+    for (let d = van!; d <= tot!; d = shiftISO(d, 1)) {
+      const bestaand = (await getDay(d)) ?? emptyDay(d)
+      const dag = normalizeDay(bestaand)
+      await putDay({ ...dag, context: { ...dag.context, holiday: aan || undefined } })
+      n++
+      if (n > 400) break
+    }
+    await onReload()
+    setBezig(false)
+    setMelding(`${n} ${n === 1 ? 'dag' : 'dagen'} ${aan ? 'gemarkeerd als vakantie' : 'vrijgegeven'}.`)
+  }
+
+  return (
+    <Card title="Vakantie">
+      <p className="note" style={{ marginBottom: 12 }}>
+        Markeer je reis vooraf, dan weet de app later waarom er geen wegingen zijn en hoe je de
+        eerste weging bij thuiskomst moet lezen. Vakantiedagen tellen niet mee in hoe volledig je
+        logt.
+      </p>
+      <div className="fields">
+        <TextField label="Van" placeholder="2026-09-24" value={van} onChange={setVan} wide />
+        <TextField label="Tot en met" placeholder="2026-10-03" value={tot} onChange={setTot} wide />
+      </div>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn" disabled={!kan || bezig} onClick={() => void markeer(true)}>
+          Markeren
+        </button>
+        <button className="btn secondary" disabled={!kan || bezig} onClick={() => void markeer(false)}>
+          Weghalen
+        </button>
+      </div>
+      {melding && <p className="note">{melding}</p>}
     </Card>
   )
 }
