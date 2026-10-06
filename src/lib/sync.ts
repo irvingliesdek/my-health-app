@@ -18,6 +18,19 @@ export function mergeDays(local: DayEntry[], remote: DayEntry[]): DayEntry[] {
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
 }
 
+/**
+ * Wat er op het scherm komt te staan als de sync een nieuwe stand aanlevert.
+ *
+ * Nadrukkelijk samenvoegen en niet vervangen. De sync leest de opslag, rekent
+ * even, en komt dan terug met een lijst — maar in die tussentijd kun jij alweer
+ * iets hebben ingetypt. Die lijst er klakkeloos overheen zetten gooit je laatste
+ * bewerking weg: je typt 1881, de sync was vertrokken toen er 188 stond, en bij
+ * terugkomst staat er weer 188. Per dag wint de versie die het laatst is
+ * bijgewerkt, dus je eigen bewerking van een seconde geleden wint.
+ */
+export const applyRemoteDays = (huidig: DayEntry[], vanSync: DayEntry[]): DayEntry[] =>
+  mergeDays(huidig, vanSync).filter((d) => !d.deleted)
+
 export function mergeProfile(local: Profile, remote: Profile | undefined): Profile {
   if (!remote) return local
   return (remote.updatedAt ?? 0) > (local.updatedAt ?? 0)

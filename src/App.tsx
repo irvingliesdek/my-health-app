@@ -3,6 +3,7 @@ import { ErrorScreen } from './components/ErrorScreen'
 import type { DayEntry, ISODate, Profile, Settings } from './types'
 import { emptyDay } from './types'
 import { allDays, getProfile, getSettings, putDay, putProfile, putSettings } from './lib/db'
+import { applyRemoteDays } from './lib/sync'
 import { formatDate, shiftISO, todayISO } from './lib/derive'
 import { syncEnabled } from './lib/firebase'
 import { syncLabel } from './lib/sync'
@@ -37,8 +38,12 @@ export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
+  // Samenvoegen met wat er nu op het scherm staat, niet vervangen. Tussen het
+  // lezen van de opslag en dit moment kun je alweer iets hebben ingetypt; die
+  // bewerking klakkeloos overschrijven is hoe het laatste cijfer van een getal
+  // kon verdwijnen. mergeDays laat per dag de nieuwste versie winnen.
   const applyRemote = useCallback((nextDays: DayEntry[], nextProfile: Profile) => {
-    setDays(nextDays.filter((d) => !d.deleted))
+    setDays((prev) => applyRemoteDays(prev, nextDays))
     setProfile(nextProfile)
   }, [])
 

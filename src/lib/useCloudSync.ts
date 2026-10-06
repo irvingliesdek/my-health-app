@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
 import type { DayEntry, Profile } from '../types'
 import { allDays, allFoods, getProfile, putDayRaw, putFoods, putProfile } from './db'
+import type { RemoteData } from './firebase'
 import { pushAll, pushDay, pushFoods, pushProfile, syncEnabled, watchAuth, watchData } from './firebase'
 import { mergeDays, mergeProfile, remoteDays, remoteFoods, unsyncedDays, type SyncState } from './sync'
 import { mergeFoods } from './foods'
@@ -17,6 +18,7 @@ export function useCloudSync(onRemoteChange: (days: DayEntry[], profile: Profile
   const [state, setState] = useState<SyncState>(syncEnabled ? 'syncing' : 'off')
   const firstPull = useRef(true)
   const applying = useRef(false)
+  const nogEenKeer = useRef<RemoteData | null | undefined>(undefined)
 
   useEffect(() => {
     if (!syncEnabled) return
@@ -32,9 +34,16 @@ export function useCloudSync(onRemoteChange: (days: DayEntry[], profile: Profile
     firstPull.current = true
     setState('syncing')
 
-    const stop = watchData(user.uid, (data) => {
+    const verwerk = (data: RemoteData | null) => {
       void (async () => {
-        if (applying.current) return
+        // Komt er een snapshot binnen terwijl we er nog een verwerken, dan mag
+        // die niet verdwijnen: we onthouden hem en draaien na afloop opnieuw.
+        // Hem laten vallen betekende dat een correctie van de server nooit meer
+        // aankwam, en dat de app met de verkeerde waarde bleef staan.
+        if (applying.current) {
+          nogEenKeer.current = data
+          return
+        }
         applying.current = true
         try {
           const [localDays, localProfile, localFoods] = await Promise.all([
@@ -49,7 +58,14 @@ export function useCloudSync(onRemoteChange: (days: DayEntry[], profile: Profile
           const foods = mergeFoods(localFoods, remoteFoods(data))
           await putFoods(foods)
 
-          for (const day of merged) await putDayRaw(day)
+          // Alleen wegschrijven wat werkelijk verandert. Alles terugschrijven
+          // was honderden transacties per snapshot, en dat maakte het raam
+          // waarin een bewerking kon kwijtraken onnodig groot.
+          const lokaalPerDatum = new Map(localDays.map((d) => [d.date, d]))
+          for (const day of merged) {
+            const bestaand = lokaalPerDatum.get(day.date)
+            if (!bestaand || (bestaand.updatedAt ?? 0) < (day.updatedAt ?? 0)) await putDayRaw(day)
+          }
           if (profile !== localProfile) await putProfile(profile)
           onRemoteChange(merged, profile)
 
@@ -71,11 +87,16 @@ export function useCloudSync(onRemoteChange: (days: DayEntry[], profile: Profile
           setState('error')
         } finally {
           applying.current = false
+          const overgeslagen = nogEenKeer.current
+          if (overgeslagen !== undefined) {
+            nogEenKeer.current = undefined
+            verwerk(overgeslagen)
+          }
         }
       })()
-    })
+    }
 
-    return stop
+    return watchData(user.uid, verwerk)
   }, [user, onRemoteChange])
 
   useEffect(() => {
