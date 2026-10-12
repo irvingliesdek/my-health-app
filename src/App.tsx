@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ErrorScreen } from './components/ErrorScreen'
 import type { DayEntry, ISODate, Profile, Settings } from './types'
 import { emptyDay } from './types'
-import { allDays, getProfile, getSettings, putDay, putProfile, putSettings } from './lib/db'
+import { allDays, getProfile, getSettings, herstelItemlijst, putDay, putProfile, putSettings } from './lib/db'
 import { applyRemoteDays } from './lib/sync'
 import { formatDate, shiftISO, todayISO } from './lib/derive'
 import { syncEnabled } from './lib/firebase'
@@ -60,6 +60,10 @@ export default function App() {
     // Zonder deze catch blijft de app op een wit scherm hangen zodra IndexedDB
     // niet beschikbaar is — bijvoorbeeld in een privévenster of bij geblokkeerde
     // site-opslag.
+    // Een itemlijst met dubbelen van voor de hernoem-fix wordt bij het openen
+    // stilletjes opgeruimd. Mislukt dat, dan is dat geen reden om de app niet
+    // te laten starten.
+    void herstelItemlijst().catch(() => undefined)
     Promise.all([allDays(), getProfile(), getSettings()])
       .then(([d, p, s]) => {
         setDays(d.filter((x) => !x.deleted))
@@ -237,6 +241,7 @@ export default function App() {
             onProfile={saveProfile}
             onSettings={saveSettings}
             onReload={reload}
+            onFoodsChanged={syncFoods}
             onLoginAgain={() => {
               localStorage.removeItem(SKIP_LOGIN)
               setSkipLogin(false)

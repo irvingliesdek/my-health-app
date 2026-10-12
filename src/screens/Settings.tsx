@@ -3,7 +3,7 @@ import type { DayEntry, Profile, Settings } from '../types'
 import { emptyDay, normalizeDay } from '../types'
 import { Card, NumberField, TextField } from '../components/inputs'
 import { allFoods, deleteFood, exportAll, getDay, importAll, putDay, putFoods } from '../lib/db'
-import { foodKey, type FoodItem } from '../lib/foods'
+import { foodKey, hernoemItem, type FoodItem } from '../lib/foods'
 import { ageAt, birthDateForAge, shiftISO, todayISO } from '../lib/derive'
 import { PIN_LENGTH, biometricsAvailable, hashPin, registerBiometrics } from '../lib/lock'
 import { claudeSummary } from '../lib/share'
@@ -21,6 +21,7 @@ type Props = {
   onSettings: (s: Settings) => void
   onReload: () => Promise<void>
   onLoginAgain: () => void
+  onFoodsChanged: () => void
 }
 
 export default function SettingsScreen({
@@ -33,6 +34,7 @@ export default function SettingsScreen({
   onSettings,
   onReload,
   onLoginAgain,
+  onFoodsChanged,
 }: Props) {
   const [msg, setMsg] = useState('')
   const [pin, setPin] = useState('')
@@ -211,7 +213,7 @@ export default function SettingsScreen({
         </p>
       </Card>
 
-      <FoodsCard />
+      <FoodsCard onChanged={onFoodsChanged} />
 
       <Card title="Slot">
         <p className="note" style={{ marginBottom: 12 }}>
@@ -312,16 +314,30 @@ export default function SettingsScreen({
 
 /* ---------------- beheer van je itemlijst ---------------- */
 
-function FoodsCard() {
+/**
+ * Beheer van je itemlijst. Twee dingen gaan hier bewust anders dan je zou
+ * verwachten.
+ *
+ * Een naam wordt pas vastgelegd als je het veld verlaat, niet per toetsaanslag.
+ * Hernoemen verandert namelijk ook de sleutel waarop de app het item herkent,
+ * en tijdens het typen van 'Bier (blik 330 ml)' kom je langs 'Bier' — bestaat
+ * dat al, dan zou de app de twee halverwege samenvoegen.
+ *
+ * En elke wijziging gaat naar de server. Deed hij dat niet, dan stond een item
+ * dat je hier wiste bij de volgende synchronisatie gewoon weer in je lijst.
+ */
+function FoodsCard({ onChanged }: { onChanged: () => void }) {
   const [foods, setFoods] = useState<FoodItem[]>([])
   const [filter, setFilter] = useState('')
+  const [concept, setConcept] = useState<Record<string, string>>({})
 
   useEffect(() => {
     void allFoods().then(setFoods)
   }, [])
 
+  const zoek = foodKey(filter)
   const zichtbaar = foods
-    .filter((f) => f.key.includes(foodKey(filter)))
+    .filter((f) => f.key.includes(zoek) || foodKey(f.name).includes(zoek))
     .sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name))
 
   const bewerk = (key: string, p: Partial<FoodItem>) => {
@@ -331,9 +347,22 @@ function FoodsCard() {
     if (gewijzigd) void putFoods([gewijzigd])
   }
 
-  const wis = (key: string) => {
+  const legNaamVast = async (key: string) => {
+    const naam = concept[key]
+    setConcept(({ [key]: _, ...rest }) => rest)
+    if (naam == null) return
+    const { items, weg } = hernoemItem(foods, key, naam)
+    if (items === foods) return
+    setFoods(items)
+    await putFoods(items.filter((f) => !foods.includes(f)))
+    for (const k of weg) await deleteFood(k)
+    onChanged()
+  }
+
+  const wis = async (key: string) => {
     setFoods((prev) => prev.filter((f) => f.key !== key))
-    void deleteFood(key)
+    await deleteFood(key)
+    onChanged()
   }
 
   return (
@@ -341,6 +370,7 @@ function FoodsCard() {
       <p className="note" style={{ marginBottom: 12 }}>
         Alles wat je met een naam en calorieën opslaat komt hier vanzelf in. De twee velden zijn
         calorieën en eiwit in gram; eiwit mag leeg blijven. Typefouten gooi je eruit met het kruisje.
+        Geef je een item de naam van een item dat al bestaat, dan worden ze samengevoegd.
       </p>
 
       <div className="field">
@@ -359,8 +389,9 @@ function FoodsCard() {
           <div className="food-row" key={f.key}>
             <input
               className="food-name"
-              value={f.name}
-              onChange={(e) => bewerk(f.key, { name: e.target.value })}
+              value={concept[f.key] ?? f.name}
+              onChange={(e) => setConcept((c) => ({ ...c, [f.key]: e.target.value }))}
+              onBlur={() => void legNaamVast(f.key)}
             />
             <input
               className="food-kcal"
@@ -369,6 +400,7 @@ function FoodsCard() {
               aria-label="calorieën"
               value={f.kcal}
               onChange={(e) => bewerk(f.key, { kcal: Number(e.target.value.replace(/\D/g, '')) || 0 })}
+              onBlur={onChanged}
             />
             <input
               className="food-protein"
@@ -381,8 +413,13 @@ function FoodsCard() {
                 const cijfers = e.target.value.replace(/\D/g, '')
                 bewerk(f.key, { proteinG: cijfers === '' ? undefined : Number(cijfers) })
               }}
+              onBlur={onChanged}
             />
-            <button className="remove" aria-label={`${f.name} verwijderen`} onClick={() => wis(f.key)}>
+            <button
+              className="remove"
+              aria-label={`${f.name} verwijderen`}
+              onClick={() => void wis(f.key)}
+            >
               ×
             </button>
           </div>

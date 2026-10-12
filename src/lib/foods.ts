@@ -12,7 +12,80 @@ export type FoodItem = {
   lastUsed: number
 }
 
-export const foodKey = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ')
+/**
+ * De sleutel waarop een item wordt herkend. Unicode wordt eerst gelijkgetrokken:
+ * een iPhone-toetsenbord kan 'ë' als één teken of als 'e' plus een los puntje
+ * aanleveren. Die zien er hetzelfde uit maar zijn verschillende tekens, en dan
+ * staat 'Stëlz' twee keer in je lijst zonder dat je het verschil kunt zien.
+ */
+export const foodKey = (name: string) =>
+  name.normalize('NFC').trim().toLowerCase().replace(/\s+/g, ' ')
+
+/**
+ * Twee items die eigenlijk hetzelfde zijn tot één samenvoegen. De meest recent
+ * gebruikte geeft de naam en de calorieën — dat is de versie die je nu
+ * aanhoudt. Het aantal keer gebruikt telt op, want het gebruik was over beide
+ * verdeeld.
+ */
+function voegSamen(a: FoodItem, b: FoodItem, key: string): FoodItem {
+  const [recent, ouder] = a.lastUsed >= b.lastUsed ? [a, b] : [b, a]
+  return {
+    ...recent,
+    key,
+    proteinG: recent.proteinG ?? ouder.proteinG,
+    uses: a.uses + b.uses,
+    lastUsed: recent.lastUsed,
+  }
+}
+
+/**
+ * Zet elk item weer op de sleutel die bij zijn naam hoort, en voegt samen wat
+ * daardoor op dezelfde plek uitkomt.
+ *
+ * Nodig voor lijsten die al vervuild zijn. Hernoemen veranderde vroeger alleen
+ * de naam en liet de sleutel staan. Een item dat je van 'Rode wijn' had omgedoopt
+ * tot 'Glas rode wijn (150 ml)' hield de sleutel 'rode wijn' — en zodra je het
+ * daarna kiest en opslaat, maakte de app onder de nieuwe naam een tweede item
+ * aan. Twee regels met precies dezelfde naam.
+ */
+export function herstelSleutels(items: FoodItem[]): { items: FoodItem[]; weg: string[] } {
+  const perKey = new Map<string, FoodItem>()
+  const weg: string[] = []
+  for (const item of items) {
+    const juist = foodKey(item.name)
+    if (juist !== item.key) weg.push(item.key)
+    const al = perKey.get(juist)
+    perKey.set(juist, al ? voegSamen(al, item, juist) : { ...item, key: juist })
+  }
+  // Een oude sleutel die toevallig de juiste sleutel van een ander item is, moet
+  // blijven staan: dat is nu de plek van het samengevoegde item.
+  return { items: [...perKey.values()], weg: weg.filter((k) => !perKey.has(k)) }
+}
+
+/**
+ * Een item hernoemen, inclusief zijn sleutel. Bestaat de nieuwe naam al, dan
+ * worden de twee samengevoegd in plaats van dat er een dubbele ontstaat.
+ */
+export function hernoemItem(
+  items: FoodItem[],
+  key: string,
+  naam: string,
+): { items: FoodItem[]; weg: string[] } {
+  const item = items.find((f) => f.key === key)
+  const schoon = naam.trim()
+  if (!item || schoon.length < 3) return { items, weg: [] }
+  const nieuweKey = foodKey(schoon)
+  if (nieuweKey === key) {
+    return { items: items.map((f) => (f.key === key ? { ...f, name: schoon } : f)), weg: [] }
+  }
+  const doel = items.find((f) => f.key === nieuweKey)
+  const hernoemd = { ...item, key: nieuweKey, name: schoon }
+  const nieuw = doel ? { ...voegSamen(doel, hernoemd, nieuweKey), name: schoon } : hernoemd
+  return {
+    items: [...items.filter((f) => f.key !== key && f.key !== nieuweKey), nieuw],
+    weg: [key],
+  }
+}
 
 /**
  * Startlijst met vaste items. Alle waarden zijn schattingen voor een normale

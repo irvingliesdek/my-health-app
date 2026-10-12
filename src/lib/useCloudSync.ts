@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
 import type { DayEntry, Profile } from '../types'
-import { allDays, allFoods, getProfile, putDayRaw, putFoods, putProfile } from './db'
+import { allDays, allFoods, deleteFood, getProfile, putDayRaw, putFoods, putProfile } from './db'
 import type { RemoteData } from './firebase'
 import { pushAll, pushDay, pushFoods, pushProfile, syncEnabled, watchAuth, watchData } from './firebase'
 import { mergeDays, mergeProfile, remoteDays, remoteFoods, unsyncedDays, type SyncState } from './sync'
-import { mergeFoods } from './foods'
+import { herstelSleutels, mergeFoods } from './foods'
 
 /**
  * Houdt de lokale opslag en Firebase gelijk. Lokaal blijft leidend voor de UI:
@@ -55,8 +55,16 @@ export function useCloudSync(onRemoteChange: (days: DayEntry[], profile: Profile
           const merged = mergeDays(localDays, incoming)
           const profile = mergeProfile(localProfile, data?.profile)
 
-          const foods = mergeFoods(localFoods, remoteFoods(data))
+          // Na het samenvoegen elk item weer op de sleutel van zijn naam zetten.
+          // De server kan nog items bevatten met een oude sleutel van voor de
+          // hernoem-fix; zonder dit zouden die bij elke sync als dubbele regel
+          // terugkomen, ook als je ze lokaal al had opgeruimd.
+          const { items: foods, weg: oudeSleutels } = herstelSleutels(
+            mergeFoods(localFoods, remoteFoods(data)),
+          )
           await putFoods(foods)
+          for (const k of oudeSleutels) await deleteFood(k)
+          if (oudeSleutels.length > 0) await pushFoods(user.uid, foods)
 
           // Alleen wegschrijven wat werkelijk verandert. Alles terugschrijven
           // was honderden transacties per snapshot, en dat maakte het raam

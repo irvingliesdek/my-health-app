@@ -1,5 +1,5 @@
 import type { DayEntry, ISODate, Profile, Settings } from '../types'
-import { seedFoods, type FoodItem } from './foods'
+import { herstelSleutels, seedFoods, type FoodItem } from './foods'
 import { defaultProfile, defaultSettings, normalizeDay } from '../types'
 
 const DB_NAME = 'gezondheid'
@@ -184,3 +184,18 @@ export async function putFoods(items: FoodItem[]) {
 }
 
 export const deleteFood = (key: string) => tx(FOODS, 'readwrite', (s) => s.delete(key))
+
+/**
+ * Ruimt dubbele items op die door het oude hernoemen zijn ontstaan: elk item
+ * terug op de sleutel van zijn naam, en samenvoegen wat daardoor samenvalt.
+ * Veilig om bij elke start te draaien — staat alles al goed, dan gebeurt er
+ * niets. Geeft terug of er iets veranderde, zodat de aanroeper kan syncen.
+ */
+export async function herstelItemlijst(): Promise<boolean> {
+  const voor = await allFoods()
+  const { items, weg } = herstelSleutels(voor)
+  if (weg.length === 0) return false
+  await putFoods(items)
+  for (const k of weg) await deleteFood(k)
+  return true
+}
