@@ -71,15 +71,31 @@ export default function SettingsScreen({
     }
   }
 
+  /**
+   * Een back-up maken. Eerst via het deelmenu, want een gewone downloadlink doet
+   * in een app op het beginscherm van een iPhone vaak helemaal niets. Via het
+   * deelmenu kies je 'Bewaar in Bestanden'. Werkt dat niet, dan alsnog de
+   * downloadlink — en die link wordt pas na een tijdje vrijgegeven, omdat iOS
+   * hem anders al kwijt is voordat de download begint.
+   */
   const download = async () => {
     const data = await exportAll()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
+    const naam = `gezondheid-${todayISO()}.json`
+    const file = new File([JSON.stringify(data, null, 2)], naam, { type: 'application/json' })
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Back-up gezondheid' })
+        return
+      }
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') return
+    }
+    const url = URL.createObjectURL(file)
     const a = document.createElement('a')
     a.href = url
-    a.download = `gezondheid-${todayISO()}.json`
+    a.download = naam
     a.click()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
 
   const upload = async (file: File) => {

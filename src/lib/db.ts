@@ -89,8 +89,10 @@ export const putSettings = (s: Settings) => tx(META, 'readwrite', (st) => st.put
 
 export async function exportAll() {
   // de PIN hoort niet in een back-up die je ergens neerzet — die blijft op het toestel
-  const [days, profile] = await Promise.all([allDays(), getProfile()])
-  return { version: 1, exportedAt: new Date().toISOString(), profile, days }
+  const [days, profile, foods] = await Promise.all([allDays(), getProfile(), allFoods()])
+  // De itemlijst gaat mee: zonder die lijst ben je na het terugzetten al je
+  // eigen calorieën en de volgorde van je suggesties kwijt.
+  return { version: 1, exportedAt: new Date().toISOString(), profile, days, foods }
 }
 
 /**
