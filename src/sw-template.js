@@ -39,15 +39,22 @@ self.addEventListener('fetch', (e) => {
 
   // Voor de pagina zelf eerst het netwerk, zodat je een nieuwe versie meteen
   // krijgt; valt dat weg, dan de laatst bewaarde versie.
+  //
+  // Alleen een geslaagd antwoord mag de bewaarde app vervangen. Eerder werd elk
+  // antwoord opgeslagen, ook een foutpagina: toen de site verhuisde gaf GitHub
+  // een 404, die werd bewaard als 'de app', en vanaf dat moment opende de app
+  // nergens meer — ook niet offline, terwijl je data er nog gewoon stond.
   if (request.mode === 'navigate') {
+    const bewaard = () => caches.match('./index.html').then((r) => r || caches.match('./'))
     e.respondWith(
       fetch(request)
         .then((res) => {
+          if (!res.ok) return bewaard().then((r) => r || res)
           const clone = res.clone()
           caches.open(CACHE).then((c) => c.put('./index.html', clone))
           return res
         })
-        .catch(() => caches.match('./index.html').then((r) => r || caches.match('./'))),
+        .catch(() => bewaard()),
     )
     return
   }
