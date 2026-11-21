@@ -66,11 +66,34 @@ export function watchData(uid: string, cb: (data: RemoteData | null) => void): (
   return () => off(node)
 }
 
+/**
+ * Haalt alle velden met de waarde `undefined` weg, ook diep in geneste objecten
+ * en lijsten.
+ *
+ * Firebase weigert een complete schrijfactie zodra er ergens één `undefined` in
+ * zit — en in deze app zit die er vaak in: een maaltijd zonder tijdstip, een
+ * item zonder eiwit, een veld dat je hebt leeggemaakt. Zonder deze stap werd
+ * een dag met eten erin stilletjes geweigerd, terwijl een dag met alleen een
+ * weging wel aankwam. Zo stond je gewicht maandenlang op de server en je eten
+ * niet.
+ */
+export function zonderUndefined<T>(waarde: T): T {
+  if (Array.isArray(waarde)) return waarde.map(zonderUndefined) as T
+  if (waarde && typeof waarde === 'object') {
+    return Object.fromEntries(
+      Object.entries(waarde)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, zonderUndefined(v)]),
+    ) as T
+  }
+  return waarde
+}
+
 export const pushDay = (uid: string, day: DayEntry) =>
-  set(ref(init().db, `users/${uid}/days/${day.date}`), day)
+  set(ref(init().db, `users/${uid}/days/${day.date}`), zonderUndefined(day))
 
 export const pushProfile = (uid: string, profile: Profile) =>
-  set(ref(init().db, `users/${uid}/profile`), profile)
+  set(ref(init().db, `users/${uid}/profile`), zonderUndefined(profile))
 
 /** Firebase-sleutels mogen geen . # $ [ ] / bevatten; namen dus coderen. */
 const foodPath = (key: string) => encodeURIComponent(key).replace(/\./g, '%2E')
@@ -78,7 +101,7 @@ const foodPath = (key: string) => encodeURIComponent(key).replace(/\./g, '%2E')
 export const pushFoods = (uid: string, items: FoodItem[]) =>
   set(
     ref(init().db, `users/${uid}/foods`),
-    Object.fromEntries(items.map((f) => [foodPath(f.key), f])),
+    Object.fromEntries(items.map((f) => [foodPath(f.key), zonderUndefined(f)])),
   )
 
 /** Eenmalige volledige upload — gebruikt bij de eerste sync van een apparaat. */

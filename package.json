@@ -1,7 +1,7 @@
 {
   "name": "my-health-app",
   "private": true,
-  "version": "1.23.3",
+  "version": "1.23.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,8 @@
     "test-import": "tsx scripts/test-import.mts",
     "repair-timestamps": "node scripts/repair-timestamps.mjs",
     "test-race": "tsx scripts/test-race.mts",
-    "test-items": "tsx scripts/test-items.mts"
+    "test-items": "tsx scripts/test-items.mts",
+    "test-firebase": "tsx scripts/test-firebase.mts"
   },
   "dependencies": {
     "firebase": "^12.17.0",
