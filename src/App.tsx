@@ -109,6 +109,16 @@ export default function App() {
     [syncDay],
   )
 
+  /**
+   * Alles wat lokaal staat naar de server, inclusief de itemlijst. Voor na een
+   * import: geredde data die alleen op dit toestel staat, is bij een volgende
+   * verhuizing of een kwijtgeraakt toestel anders opnieuw weg.
+   */
+  const pushAlles = useCallback(async () => {
+    for (const d of await allDays()) await syncDay(d)
+    await syncFoods()
+  }, [syncDay, syncFoods])
+
   const saveProfile = useCallback(
     async (p: Profile) => {
       const stamped = { ...p, updatedAt: Date.now() }
@@ -242,6 +252,7 @@ export default function App() {
             onSettings={saveSettings}
             onReload={reload}
             onFoodsChanged={syncFoods}
+            onImported={pushAlles}
             onLoginAgain={() => {
               localStorage.removeItem(SKIP_LOGIN)
               setSkipLogin(false)

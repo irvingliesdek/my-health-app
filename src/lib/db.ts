@@ -1,5 +1,5 @@
 import type { DayEntry, ISODate, Profile, Settings } from '../types'
-import { herstelSleutels, seedFoods, type FoodItem } from './foods'
+import { herstelSleutels, mergeFoods, seedFoods, type FoodItem } from './foods'
 import { defaultProfile, defaultSettings, normalizeDay } from '../types'
 
 const DB_NAME = 'gezondheid'
@@ -158,9 +158,17 @@ export function mergeDay(mine: DayEntry | undefined, incoming: DayEntry): DayEnt
 }
 
 export async function importAll(payload: unknown) {
-  const data = payload as { profile?: Profile; days?: DayEntry[] }
+  const data = payload as { profile?: Profile; days?: DayEntry[]; foods?: FoodItem[] }
   if (!data || !Array.isArray(data.days)) throw new Error('Onbekend bestandsformaat')
   if (data.profile) await putProfile({ ...defaultProfile, ...data.profile })
+  // Een reddingsexport neemt ook de itemlijst mee. Samenvoegen met wat er al
+  // staat, en daarna elk item weer op de sleutel van zijn naam.
+  if (Array.isArray(data.foods)) {
+    const geldig = data.foods.filter((f) => f && typeof f.name === 'string' && typeof f.key === 'string')
+    const { items, weg } = herstelSleutels(mergeFoods(await allFoods(), geldig))
+    await putFoods(items)
+    for (const k of weg) await deleteFood(k)
+  }
   for (const day of data.days) {
     if (typeof day?.date !== 'string') continue
     const incoming = normalizeDay(day)

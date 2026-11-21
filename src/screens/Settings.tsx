@@ -22,6 +22,7 @@ type Props = {
   onReload: () => Promise<void>
   onLoginAgain: () => void
   onFoodsChanged: () => void
+  onImported: () => Promise<void>
 }
 
 export default function SettingsScreen({
@@ -35,6 +36,7 @@ export default function SettingsScreen({
   onReload,
   onLoginAgain,
   onFoodsChanged,
+  onImported,
 }: Props) {
   const [msg, setMsg] = useState('')
   const [pin, setPin] = useState('')
@@ -84,7 +86,11 @@ export default function SettingsScreen({
     try {
       const count = await importAll(JSON.parse(await file.text()))
       await onReload()
-      setMsg(`${count} dagen samengevoegd met wat er al stond.`)
+      setMsg(`${count} dagen samengevoegd met wat er al stond. Bezig met naar de server sturen…`)
+      // Een import schreef vroeger alleen lokaal. Na het redden van oude data
+      // wil je die juist op de server hebben, dus alles meteen omhoog.
+      await onImported()
+      setMsg(`${count} dagen samengevoegd en naar de server gestuurd.`)
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Import mislukt.')
     }

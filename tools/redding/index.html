@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gezondheid — data redden</title>
+<style>
+  body { font: 16px/1.5 -apple-system, system-ui, sans-serif; margin: 0; padding: 24px 20px 48px;
+         background: #f4f5f7; color: #1c2434; }
+  main { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  .kaart { background: #fff; border-radius: 14px; padding: 18px; margin: 16px 0;
+           box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .getal { font-size: 28px; font-weight: 700; }
+  button { display: block; width: 100%; font: inherit; font-weight: 600; border: 0; border-radius: 12px;
+           padding: 14px; margin-top: 12px; background: #1c2f5c; color: #fff; }
+  button.tweede { background: #e6e9ef; color: #1c2434; }
+  .fout { color: #a3261f; }
+  .klein { font-size: 14px; color: #5b6475; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Data redden</h1>
+  <p class="klein">Deze pagina leest de gegevens die de oude app op dit toestel heeft bewaard en
+  zet ze in een bestand. Er wordt niets gewijzigd of verwijderd.</p>
+
+  <div class="kaart" id="status">Bezig met zoeken…</div>
+  <div id="acties" hidden>
+    <button id="deel">Bestand delen of bewaren</button>
+    <button id="kopieer" class="tweede">Kopiëren als tekst</button>
+  </div>
+  <p class="klein" id="uitleg" hidden>Bewaar het bestand (bijvoorbeeld in Bestanden), open daarna de
+  nieuwe app en kies <b>Instellingen → Importeren</b>.</p>
+</main>
+<script>
+(async () => {
+  const status = document.getElementById('status')
+  const toon = (html) => { status.innerHTML = html }
+
+  // Openen zonder versienummer: dan krijgen we de bestaande database zoals hij is.
+  // Bestaat hij niet, dan zou de browser een lege aanmaken -- dat breken we af,
+  // zodat deze pagina nooit iets achterlaat.
+  const db = await new Promise((ok) => {
+    const req = indexedDB.open('gezondheid')
+    req.onupgradeneeded = (e) => { if (e.oldVersion === 0) { req.transaction.abort(); ok(null) } }
+    req.onsuccess = () => ok(req.result)
+    req.onerror = () => ok(null)
+  })
+
+  if (!db || !db.objectStoreNames.contains('days')) {
+    toon('<p class="fout"><b>Geen gegevens gevonden.</b></p>' +
+      '<p>Op een iPhone heeft een app op je beginscherm zijn eigen opslag, los van Safari. ' +
+      'Open deze pagina via het <b>oude icoon op je beginscherm</b>, niet via Safari.</p>')
+    return
+  }
+
+  const alles = (store) => new Promise((ok) => {
+    if (!db.objectStoreNames.contains(store)) return ok([])
+    const req = db.transaction(store, 'readonly').objectStore(store).getAll()
+    req.onsuccess = () => ok(req.result || [])
+    req.onerror = () => ok([])
+  })
+  const een = (store, key) => new Promise((ok) => {
+    if (!db.objectStoreNames.contains(store)) return ok(undefined)
+    const req = db.transaction(store, 'readonly').objectStore(store).get(key)
+    req.onsuccess = () => ok(req.result)
+    req.onerror = () => ok(undefined)
+  })
+
+  const days = (await alles('days')).filter((d) => d && d.date && !d.deleted)
+  const foods = await alles('foods')
+  const profile = await een('meta', 'profile')
+  const metEten = days.filter((d) => Array.isArray(d.meals) && d.meals.length > 0)
+  const maaltijden = metEten.reduce((n, d) => n + d.meals.length, 0)
+  const datums = days.map((d) => d.date).sort()
+
+  // Hetzelfde formaat als Exporteren in de app, plus de itemlijst. De PIN gaat
+  // bewust niet mee.
+  const data = { version: 1, exportedAt: new Date().toISOString(), profile, days, foods }
+  const tekst = JSON.stringify(data)
+  const naam = `gezondheid-gered-${new Date().toISOString().slice(0, 10)}.json`
+
+  toon(
+    `<div class="getal">${days.length} dagen</div>` +
+    `<div>waarvan <b>${metEten.length}</b> met eten (${maaltijden} regels)</div>` +
+    `<div>${foods.length} items in je lijst</div>` +
+    (datums.length ? `<div class="klein">van ${datums[0]} tot ${datums[datums.length - 1]}</div>` : '')
+  )
+  document.getElementById('acties').hidden = false
+  document.getElementById('uitleg').hidden = false
+
+  document.getElementById('deel').onclick = async () => {
+    const file = new File([tekst], naam, { type: 'application/json' })
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Gezondheid — geredde data' })
+        return
+      }
+    } catch (e) { if (e.name === 'AbortError') return }
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(file)
+    a.download = naam
+    a.click()
+  }
+  document.getElementById('kopieer').onclick = async () => {
+    try { await navigator.clipboard.writeText(tekst); alert('Gekopieerd.') }
+    catch { alert('Kopiëren lukte niet. Gebruik de knop erboven.') }
+  }
+})()
+</script>
+</body>
+</html>
