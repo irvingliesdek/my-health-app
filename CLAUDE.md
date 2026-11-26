@@ -25,8 +25,9 @@ commitberichten en antwoorden.
   de nieuwe versie heeft.
 - **Voor elke commit:** `npx tsc --noEmit`, `npm run build`, `npm run test-import`,
   `npm run test-race`, `npm run test-items`, `npm run test-firebase`. De deploy-workflow
-  draait alleen `npm ci` en `npm run build`, dus de tests vangen niets af als je ze
-  niet zelf draait.
+  draait de typecheck en dezelfde vier tests ook, vóór de build. Faalt er een, dan
+  stopt de deploy en blijft de vorige versie live. Draai ze toch zelf vooraf: een
+  mislukte deploy betekent dat je wijziging niet live staat.
 - **Een bugfix krijgt een test die faalt op het oude gedrag.** Draai hem echt tegen de
   oude code. Een test die met en zonder fix slaagt, bewijst niets, en dat is hier
   twee keer gebeurd.

@@ -29,6 +29,15 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Eerst de typecheck en alle tests. Faalt er een, dan stopt de run hier
+      # en blijft de vorige versie live staan.
+      - run: npx tsc --noEmit
+      - run: npm run test-import
+      - run: npm run test-race
+      - run: npm run test-items
+      - run: npm run test-firebase
+
       - run: npm run build
 
       - uses: actions/configure-pages@v5
