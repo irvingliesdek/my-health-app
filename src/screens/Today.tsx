@@ -5,6 +5,7 @@ import { allFoods, putFoods } from '../lib/db'
 import { learnFromDay, searchFoods, type FoodItem } from '../lib/foods'
 import { forecast } from '../lib/forecast'
 import { predictNextWeight } from '../lib/predict'
+import { FITDAYS_VELDEN, parseFitdays, veldNaam, type FitdaysUitslag, type FitdaysVeld } from '../lib/fitdays'
 import { AfgeleidChip, Card, NumberField, Scale, TimeField, Toggle } from '../components/inputs'
 import {
   balance,
@@ -147,6 +148,7 @@ export default function Today({ day, days, profile, onSave, onFoodsChanged, onDe
       <WorkoutCard day={day} days={days} profile={profile} onSave={onSave} />
 
       <Card title="Lichaamssamenstelling">
+        <WegingPlakken onApply={(w) => patchBody(w)} />
         <div className="fields">
           <NumberField
             label="Gewicht"
@@ -1225,4 +1227,147 @@ function sorteer(meals: Meal[], key: SortKey): Meal[] {
   const waarde = (m: Meal) =>
     key === 'aantal' ? (m.qty ?? 1) : key === 'kcal' ? (m.kcal ?? 0) : mealKcal(m)
   return kopie.sort((a, b) => waarde(b) - waarde(a))
+}
+
+const eenheidTekst = (v: FitdaysVeld) => {
+  const e = FITDAYS_VELDEN.find((f) => f.veld === v)?.eenheid
+  return e === 'kg' ? ' kg' : e === '%' ? '%' : ''
+}
+const waardeTekst = (v: FitdaysVeld, n: number) => `${String(n).replace('.', ',')}${eenheidTekst(v)}`
+
+/**
+ * Plakt de tekst die Live Text uit een Fitdays-screenshot haalt ("Kopieer
+ * alles") en vult de herkende velden in. De velden eronder zijn de controle:
+ * daar staan de getallen meteen, en daar verbeter je ze. Wat er niet in stond
+ * of niet klopte, blijft zoals het was.
+ */
+function WegingPlakken({ onApply }: { onApply: (b: Partial<Body>) => void }) {
+  const [open, setOpen] = useState(false)
+  const [tekst, setTekst] = useState('')
+  const [uitslag, setUitslag] = useState<FitdaysUitslag | null>(null)
+  const [melding, setMelding] = useState<string | null>(null)
+  const [toegepast, setToegepast] = useState<Set<string>>(new Set())
+  const kanKlembord = typeof navigator !== 'undefined' && !!navigator.clipboard?.readText
+
+  const verwerk = (t: string) => {
+    const u = parseFitdays(t)
+    setUitslag(u)
+    setToegepast(new Set())
+    if (Object.keys(u.waarden).length) {
+      onApply(u.waarden)
+      setOpen(false)
+      setTekst('')
+    }
+  }
+
+  const uitKlembord = async () => {
+    setMelding(null)
+    try {
+      const t = await navigator.clipboard.readText()
+      if (!t.trim()) {
+        setOpen(true)
+        setMelding('Het klembord is leeg. Plak de tekst hieronder.')
+        return
+      }
+      verwerk(t)
+    } catch {
+      // geweigerd of niet ondersteund: dan het tekstvak
+      setOpen(true)
+      setMelding('Klembord lezen lukte niet. Plak de tekst hieronder.')
+    }
+  }
+
+  const ingevuld = uitslag ? (Object.keys(uitslag.waarden) as FitdaysVeld[]) : []
+  const niets = uitslag && ingevuld.length === 0
+
+  return (
+    <div className="weging-plakken">
+      <div className="row">
+        {kanKlembord && (
+          <button className="btn secondary" onClick={uitKlembord}>
+            Plakken uit klembord
+          </button>
+        )}
+        <button
+          className="btn ghost"
+          onClick={() => {
+            setOpen(!open)
+            setMelding(null)
+          }}
+        >
+          {open ? 'Sluiten' : 'Weging plakken'}
+        </button>
+      </div>
+      {open && (
+        <div className="field" style={{ marginTop: 8 }}>
+          <label>Tekst uit Fitdays (Live Text → Kopieer alles)</label>
+          <textarea
+            value={tekst}
+            onChange={(e) => setTekst(e.target.value)}
+            onPaste={(e) => {
+              const t = e.clipboardData.getData('text')
+              if (t) {
+                e.preventDefault()
+                setTekst(t)
+                verwerk(t)
+              }
+            }}
+            placeholder="Houd ingedrukt en kies Plak"
+          />
+          <div className="row" style={{ marginTop: 6 }}>
+            <button className="btn" disabled={!tekst.trim()} onClick={() => verwerk(tekst)}>
+              Invullen
+            </button>
+          </div>
+        </div>
+      )}
+      {melding && <p className="note warn">{melding}</p>}
+      {uitslag && (
+        <div className="note weging-uitslag">
+          {niets ? (
+            <p className="warn">Geen weging herkend in deze tekst. Er is niets veranderd.</p>
+          ) : (
+            <p>
+              <strong>Ingevuld:</strong> {ingevuld.map((v) => `${veldNaam(v)} ${waardeTekst(v, uitslag.waarden[v]!)}`).join(', ')}.
+            </p>
+          )}
+          {uitslag.nietGevonden.length > 0 && !niets && (
+            <p>
+              <strong>Niet herkend:</strong> {uitslag.nietGevonden.map(veldNaam).join(', ')}. Die velden
+              zijn niet aangeraakt.
+            </p>
+          )}
+          {uitslag.waarschuwingen.map((w) => (
+            <p key={w} className="warn">
+              {w}
+            </p>
+          ))}
+          {uitslag.tegengehouden.length > 0 && (
+            <div className="row">
+              {uitslag.tegengehouden.map((t) => {
+                const klaar = toegepast.has(t.veld)
+                return (
+                  <button
+                    key={t.veld}
+                    className="chip"
+                    disabled={klaar}
+                    onClick={() => {
+                      onApply({ [t.veld]: t.waarde })
+                      setToegepast(new Set([...toegepast, t.veld]))
+                    }}
+                  >
+                    {klaar ? '✓ ' : 'Toch invullen: '}
+                    {veldNaam(t.veld)} {waardeTekst(t.veld, t.waarde)}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          <button className="btn ghost" onClick={() => setUitslag(null)}>
+            Verbergen
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }

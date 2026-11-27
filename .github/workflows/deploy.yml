@@ -37,6 +37,7 @@ jobs:
       - run: npm run test-race
       - run: npm run test-items
       - run: npm run test-firebase
+      - run: npm run test-fitdays
 
       - run: npm run build
 

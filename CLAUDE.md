@@ -24,8 +24,8 @@ commitberichten en antwoorden.
   ook de cachenaam van de service worker. Zonder ophoging kan Irving niet zien of hij
   de nieuwe versie heeft.
 - **Voor elke commit:** `npx tsc --noEmit`, `npm run build`, `npm run test-import`,
-  `npm run test-race`, `npm run test-items`, `npm run test-firebase`. De deploy-workflow
-  draait de typecheck en dezelfde vier tests ook, vóór de build. Faalt er een, dan
+  `npm run test-race`, `npm run test-items`, `npm run test-firebase`, `npm run test-fitdays`. De deploy-workflow
+  draait de typecheck en dezelfde vijf tests ook, vóór de build. Faalt er een, dan
   stopt de deploy en blijft de vorige versie live. Draai ze toch zelf vooraf: een
   mislukte deploy betekent dat je wijziging niet live staat.
 - **Een bugfix krijgt een test die faalt op het oude gedrag.** Draai hem echt tegen de
@@ -66,6 +66,7 @@ woorden of zonder.
   `wekenSpan`, `voetbalDag`, `naVoetbalDag`, `vakantieBlokken`.
 - `src/lib/insights.ts`: alle inzichten. `src/lib/predict.ts`: weegvoorspelling,
   `learnEffects`, `backtest`.
+- `src/lib/fitdays.ts`: herkent een geplakte Fitdays-weging (Live Text), `parseFitdays`.
 - `src/lib/foods.ts`: itemlijst (`foodKey`, `herstelSleutels`, `hernoemItem`).
 - `src/sw-template.js`: service worker. `vite.config.ts` stempelt bij elke build de
   versie uit `package.json` erin (`__APP_VERSION__`), ook in de versiebadge bovenin.

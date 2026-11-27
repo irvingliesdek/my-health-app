@@ -1609,3 +1609,30 @@ textarea {
   font-size: 13px;
   color: var(--grey-600);
 }
+
+/* ---------- weging plakken (Fitdays via Live Text) ---------- */
+
+.weging-plakken {
+  margin-bottom: 12px;
+}
+
+.weging-uitslag {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--grey);
+}
+
+.weging-uitslag p {
+  margin: 0 0 6px;
+}
+
+.weging-uitslag .warn {
+  color: var(--warn);
+}
+
+.weging-uitslag .chip {
+  margin-bottom: 6px;
+  white-space: normal;
+  text-align: left;
+}
